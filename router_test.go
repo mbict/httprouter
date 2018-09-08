@@ -5,6 +5,7 @@
 package httprouter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -49,7 +50,7 @@ func TestRouter(t *testing.T) {
 	router := New()
 
 	routed := false
-	router.HandleFunc("GET", "/user/:name", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleMethodFunc("GET", "/user/:name", func(w http.ResponseWriter, r *http.Request) {
 		routed = true
 		ps := ContextParams(r.Context())
 		want := Params{"name": "gopher"}
@@ -103,8 +104,8 @@ func TestRouterAPI(t *testing.T) {
 	router.DeleteFunc("/DELETE", func(w http.ResponseWriter, r *http.Request) {
 		delete = true
 	})
-	router.Handle("GET", "/Handler", httpHandler)
-	router.HandleFunc("GET", "/HandlerFunc", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleMethod("GET", "/Handler", httpHandler)
+	router.HandleMethodFunc("GET", "/HandlerFunc", func(w http.ResponseWriter, r *http.Request) {
 		handleFunc = true
 	})
 
@@ -365,25 +366,25 @@ func TestRouterNotFound(t *testing.T) {
 	router.GetFunc("/", handleFunc)
 
 	testRoutes := []struct {
-		route  string
-		code   int
-		header string
+		route    string
+		code     int
+		location string
 	}{
-		{"/path/", 301, "map[Location:[/path]]"},   // TSR -/
-		{"/dir", 301, "map[Location:[/dir/]]"},     // TSR +/
-		{"", 301, "map[Location:[/]]"},             // TSR +/
-		{"/PATH", 301, "map[Location:[/path]]"},    // Fixed Case
-		{"/DIR/", 301, "map[Location:[/dir/]]"},    // Fixed Case
-		{"/PATH/", 301, "map[Location:[/path]]"},   // Fixed Case -/
-		{"/DIR", 301, "map[Location:[/dir/]]"},     // Fixed Case +/
-		{"/../path", 301, "map[Location:[/path]]"}, // CleanPath
-		{"/nope", 404, ""},                         // NotFound
+		{"/path/", 301, "/path"},   // TSR -/
+		{"/dir", 301, "/dir/"},     // TSR +/
+		{"", 301, "/"},             // TSR +/
+		{"/PATH", 301, "/path"},    // Fixed Case
+		{"/DIR/", 301, "/dir/"},    // Fixed Case
+		{"/PATH/", 301, "/path"},   // Fixed Case -/
+		{"/DIR", 301, "/dir/"},     // Fixed Case +/
+		{"/../path", 301, "/path"}, // CleanPath
+		{"/nope", 404, ""},         // NotFound
 	}
 	for _, tr := range testRoutes {
 		r, _ := http.NewRequest("GET", tr.route, nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, r)
-		if !(w.Code == tr.code && (w.Code == 404 || fmt.Sprint(w.Header()) == tr.header)) {
+		if !(w.Code == tr.code && (w.Code == 404 || fmt.Sprint(w.Header().Get("Location")) == tr.location)) {
 			t.Errorf("NotFound handling route %s failed: Code=%d, Header=%v", tr.route, w.Code, w.Header())
 		}
 	}
@@ -448,4 +449,41 @@ func TestRouterServeFiles(t *testing.T) {
 	if !mfs.opened {
 		t.Error("serving file failed")
 	}
+}
+
+func TestRouterParamsAreMerged(t *testing.T) {
+
+	var actualParams Params
+	handleFunc := func(_ http.ResponseWriter, r *http.Request) {
+		actualParams = ContextParams(r.Context())
+	}
+
+	router := New()
+	router.GetFunc("/test/:foo", handleFunc)
+
+	ps := Params{
+		"foo": "aaa",
+		"bar": "bbb",
+	}
+	r, _ := http.NewRequest("GET", "/test/1234", nil)
+	ctx := context.WithValue(r.Context(), ParamsContextKey, ps)
+	r = r.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, r)
+
+	//test overwrite existing params
+	if v, ok := actualParams["foo"]; !ok {
+		t.Errorf("expected param `%s` to have value `%s` but got none", "foo", "1234")
+	} else if v != "1234" {
+		t.Errorf("expected param `%s` to have value `%s` but got value `%s`", "foo", "1234", v)
+	}
+
+	//test merge params
+	if v, ok := actualParams["bar"]; !ok {
+		t.Errorf("expected param `%s` to have value `%s` but got none", "bar", "bbb")
+	} else if v != "1234" {
+		t.Errorf("expected param `%s` to have value `%s` but got value `%s`", "bar", "bbb", v)
+	}
+
 }
