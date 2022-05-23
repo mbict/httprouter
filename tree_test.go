@@ -94,10 +94,10 @@ func checkPriorities(t *testing.T, n *node) uint32 {
 }
 
 func TestCountParams(t *testing.T) {
-	if countParams("/path/:param1/static/*catch-all") != 2 {
+	if countParams("/path/@param1/static/*catch-all") != 2 {
 		t.Fail()
 	}
-	if countParams(strings.Repeat("/:param", 256)) != 256 {
+	if countParams(strings.Repeat("/@param", 256)) != 256 {
 		t.Fail()
 	}
 }
@@ -146,19 +146,19 @@ func TestTreeWildcard(t *testing.T) {
 
 	routes := [...]string{
 		"/",
-		"/cmd/:tool/:sub",
-		"/cmd/:tool/",
+		"/cmd/@tool/@sub",
+		"/cmd/@tool/",
 		"/src/*filepath",
 		"/search/",
-		"/search/:query",
-		"/user_:name",
-		"/user_:name/about",
-		"/files/:dir/*filepath",
+		"/search/@query",
+		"/user_@name",
+		"/user_@name/about",
+		"/files/@dir/*filepath",
 		"/doc/",
 		"/doc/go_faq.html",
 		"/doc/go1.html",
-		"/info/:user/public",
-		"/info/:user/project/:project",
+		"/info/@user/public",
+		"/info/@user/project/@project",
 	}
 	for _, route := range routes {
 		tree.addRoute(route, fakeHandler(route))
@@ -168,19 +168,37 @@ func TestTreeWildcard(t *testing.T) {
 
 	checkRequests(t, tree, testRequests{
 		{"/", false, "/", nil},
-		{"/cmd/test/", false, "/cmd/:tool/", Params{Param{"tool", "test"}}},
+		{"/cmd/test/", false, "/cmd/@tool/", Params{Param{"tool", "test"}}},
 		{"/cmd/test", true, "", Params{Param{"tool", "test"}}},
-		{"/cmd/test/3", false, "/cmd/:tool/:sub", Params{Param{"tool", "test"}, Param{"sub", "3"}}},
+		{"/cmd/test/3", false, "/cmd/@tool/@sub", Params{Param{"tool", "test"}, Param{"sub", "3"}}},
 		{"/src/", false, "/src/*filepath", Params{Param{"filepath", "/"}}},
 		{"/src/some/file.png", false, "/src/*filepath", Params{Param{"filepath", "/some/file.png"}}},
 		{"/search/", false, "/search/", nil},
-		{"/search/someth!ng+in+ünìcodé", false, "/search/:query", Params{Param{"query", "someth!ng+in+ünìcodé"}}},
+		{"/search/someth!ng+in+ünìcodé", false, "/search/@query", Params{Param{"query", "someth!ng+in+ünìcodé"}}},
 		{"/search/someth!ng+in+ünìcodé/", true, "", Params{Param{"query", "someth!ng+in+ünìcodé"}}},
-		{"/user_gopher", false, "/user_:name", Params{Param{"name", "gopher"}}},
-		{"/user_gopher/about", false, "/user_:name/about", Params{Param{"name", "gopher"}}},
-		{"/files/js/inc/framework.js", false, "/files/:dir/*filepath", Params{Param{"dir", "js"}, Param{"filepath", "/inc/framework.js"}}},
-		{"/info/gordon/public", false, "/info/:user/public", Params{Param{"user", "gordon"}}},
-		{"/info/gordon/project/go", false, "/info/:user/project/:project", Params{Param{"user", "gordon"}, Param{"project", "go"}}},
+		{"/user_gopher", false, "/user_@name", Params{Param{"name", "gopher"}}},
+		{"/user_gopher/about", false, "/user_@name/about", Params{Param{"name", "gopher"}}},
+		{"/files/js/inc/framework.js", false, "/files/@dir/*filepath", Params{Param{"dir", "js"}, Param{"filepath", "/inc/framework.js"}}},
+		{"/info/gordon/public", false, "/info/@user/public", Params{Param{"user", "gordon"}}},
+		{"/info/gordon/project/go", false, "/info/@user/project/@project", Params{Param{"user", "gordon"}, Param{"project", "go"}}},
+	})
+
+	checkPriorities(t, tree)
+}
+
+func TestTreeWildcardWithVerbs(t *testing.T) {
+	tree := &node{}
+
+	routes := [...]string{
+		"/cmd/@tool",
+		"/cmd/@tool:verb",
+	}
+	for _, route := range routes {
+		tree.addRoute(route, fakeHandler(route))
+	}
+
+	checkRequests(t, tree, testRequests{
+		{"/cmd/test:verb", false, "/cmd/@tool:verb", Params{Param{"tool", "test"}}},
 	})
 
 	checkPriorities(t, tree)
@@ -223,7 +241,7 @@ func testRoutes(t *testing.T, routes []testRoute) {
 
 func TestTreeWildcardConflict(t *testing.T) {
 	routes := []testRoute{
-		{"/cmd/:tool/:sub", false},
+		{"/cmd/@tool/@sub", false},
 		{"/cmd/vet", true},
 		{"/src/*filepath", false},
 		{"/src/*filepathx", true},
@@ -231,13 +249,13 @@ func TestTreeWildcardConflict(t *testing.T) {
 		{"/src1/", false},
 		{"/src1/*filepath", true},
 		{"/src2*filepath", true},
-		{"/search/:query", false},
+		{"/search/@query", false},
 		{"/search/invalid", true},
-		{"/user_:name", false},
+		{"/user_@name", false},
 		{"/user_x", true},
-		{"/user_:name", false},
-		{"/id:id", false},
-		{"/id/:id", true},
+		{"/user_@name", false},
+		{"/id@id", false},
+		{"/id/@id", true},
 	}
 	testRoutes(t, routes)
 }
@@ -245,14 +263,14 @@ func TestTreeWildcardConflict(t *testing.T) {
 func TestTreeChildConflict(t *testing.T) {
 	routes := []testRoute{
 		{"/cmd/vet", false},
-		{"/cmd/:tool/:sub", true},
+		{"/cmd/@tool/@sub", true},
 		{"/src/AUTHORS", false},
 		{"/src/*filepath", true},
 		{"/user_x", false},
-		{"/user_:name", true},
-		{"/id/:id", false},
-		{"/id:id", true},
-		{"/:id", true},
+		{"/user_@name", true},
+		{"/id/@id", false},
+		{"/id@id", true},
+		{"/@id", true},
 		{"/*filepath", true},
 	}
 	testRoutes(t, routes)
@@ -265,8 +283,8 @@ func TestTreeDupliatePath(t *testing.T) {
 		"/",
 		"/doc/",
 		"/src/*filepath",
-		"/search/:query",
-		"/user_:name",
+		"/search/@query",
+		"/user_@name",
 	}
 	for i := range routes {
 		route := routes[i]
@@ -292,8 +310,8 @@ func TestTreeDupliatePath(t *testing.T) {
 		{"/", false, "/", nil},
 		{"/doc/", false, "/doc/", nil},
 		{"/src/some/file.png", false, "/src/*filepath", Params{Param{"filepath", "/some/file.png"}}},
-		{"/search/someth!ng+in+ünìcodé", false, "/search/:query", Params{Param{"query", "someth!ng+in+ünìcodé"}}},
-		{"/user_gopher", false, "/user_:name", Params{Param{"name", "gopher"}}},
+		{"/search/someth!ng+in+ünìcodé", false, "/search/@query", Params{Param{"query", "someth!ng+in+ünìcodé"}}},
+		{"/user_gopher", false, "/user_@name", Params{Param{"name", "gopher"}}},
 	})
 }
 
@@ -301,9 +319,9 @@ func TestEmptyWildcardName(t *testing.T) {
 	tree := &node{}
 
 	routes := [...]string{
-		"/user:",
-		"/user:/",
-		"/cmd/:/",
+		"/user@",
+		"/user@/",
+		"/cmd/@/",
 		"/src/*",
 	}
 	for i := range routes {
@@ -346,9 +364,9 @@ func TestTreeDoubleWildcard(t *testing.T) {
 	const panicMsg = "only one wildcard per path segment is allowed"
 
 	routes := [...]string{
-		"/:foo:bar",
-		"/:foo:bar/",
-		"/:foo*bar",
+		"/@foo@bar",
+		"/@foo@bar/",
+		"/@foo*bar",
 	}
 
 	for i := range routes {
@@ -370,29 +388,29 @@ func TestTreeTrailingSlashRedirect(t *testing.T) {
 	routes := [...]string{
 		"/hi",
 		"/b/",
-		"/search/:query",
-		"/cmd/:tool/",
+		"/search/@query",
+		"/cmd/@tool/",
 		"/src/*filepath",
 		"/x",
 		"/x/y",
 		"/y/",
 		"/y/z",
-		"/0/:id",
-		"/0/:id/1",
-		"/1/:id/",
-		"/1/:id/2",
+		"/0/@id",
+		"/0/@id/1",
+		"/1/@id/",
+		"/1/@id/2",
 		"/aa",
 		"/a/",
 		"/admin",
-		"/admin/:category",
-		"/admin/:category/:page",
+		"/admin/@category",
+		"/admin/@category/@page",
 		"/doc",
 		"/doc/go_faq.html",
 		"/doc/go1.html",
 		"/no/a",
 		"/no/b",
-		"/api/hello/:name",
-		"/vendor/:x/*y",
+		"/api/hello/@name",
+		"/vendor/@x/*y",
 	}
 	for i := range routes {
 		route := routes[i]
@@ -454,7 +472,7 @@ func TestTreeRootTrailingSlashRedirect(t *testing.T) {
 	tree := &node{}
 
 	recv := catchPanic(func() {
-		tree.addRoute("/:test", fakeHandler("/:test"))
+		tree.addRoute("/@test", fakeHandler("/@test"))
 	})
 	if recv != nil {
 		t.Fatalf("panic inserting test route: %v", recv)
@@ -478,17 +496,17 @@ func TestTreeFindCaseInsensitivePath(t *testing.T) {
 		"/hi",
 		"/b/",
 		"/ABC/",
-		"/search/:query",
-		"/cmd/:tool/",
+		"/search/@query",
+		"/cmd/@tool/",
 		"/src/*filepath",
 		"/x",
 		"/x/y",
 		"/y/",
 		"/y/z",
-		"/0/:id",
-		"/0/:id/1",
-		"/1/:id/",
-		"/1/:id/2",
+		"/0/@id",
+		"/0/@id/1",
+		"/1/@id/",
+		"/1/@id/2",
 		"/aa",
 		"/a/",
 		"/doc",
@@ -636,7 +654,7 @@ func TestTreeInvalidNodeType(t *testing.T) {
 
 	tree := &node{}
 	tree.addRoute("/", fakeHandler("/"))
-	tree.addRoute("/:page", fakeHandler("/:page"))
+	tree.addRoute("/@page", fakeHandler("/@page"))
 
 	// set invalid node type
 	tree.children[0].nType = 42
@@ -668,8 +686,8 @@ func TestTreeWildcardConflictEx(t *testing.T) {
 		{"/who/are/foo", "/foo", `/who/are/\*you`, `/\*you`},
 		{"/who/are/foo/", "/foo/", `/who/are/\*you`, `/\*you`},
 		{"/who/are/foo/bar", "/foo/bar", `/who/are/\*you`, `/\*you`},
-		{"/conxxx", "xxx", `/con:tact`, `:tact`},
-		{"/conooo/xxx", "ooo", `/con:tact`, `:tact`},
+		{"/conxxx", "xxx", `/con@tact`, `@tact`},
+		{"/conooo/xxx", "ooo", `/con@tact`, `@tact`},
 	}
 
 	for i := range conflicts {
@@ -680,7 +698,7 @@ func TestTreeWildcardConflictEx(t *testing.T) {
 		// panic which threw by 'addRoute' function.
 		tree := &node{}
 		routes := [...]string{
-			"/con:tact",
+			"/con@tact",
 			"/who/are/*you",
 			"/who/foo/hello",
 		}

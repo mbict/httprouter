@@ -18,6 +18,7 @@ var cleanTests = []cleanPathTest{
 	// Already clean
 	{"/", "/"},
 	{"/abc", "/abc"},
+	{"/abc:verb", "/abc:verb"},
 	{"/a/b/c", "/a/b/c"},
 	{"/abc/", "/abc/"},
 	{"/a/b/c/", "/a/b/c/"},

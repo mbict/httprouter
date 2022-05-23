@@ -1,3 +1,3 @@
-module github.com/julienschmidt/httprouter
+module github.com/mbict/httprouter
 
 go 1.7
